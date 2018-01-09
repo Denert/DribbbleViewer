@@ -35,9 +35,9 @@ import io.realm.Sort;
 public class BasePresenter extends MvpPresenter<BaseView> {
 
     private boolean isLoading;
+    private boolean isDbData = false;
     private int page = 1;
     private int shotId = 1;
-    private CountingIdlingResource countingIdlingResource;
 
     @Inject
     NetworkManager mNetworkManager;
@@ -58,8 +58,6 @@ public class BasePresenter extends MvpPresenter<BaseView> {
             page++;
 
         isLoading = true;
-
-        countingIdlingResource.increment();
 
         mNetworkManager.getNetworkState()
                 .flatMap(aBoolean -> {
@@ -135,13 +133,13 @@ public class BasePresenter extends MvpPresenter<BaseView> {
 
     public void onLoadingFinish(ProgressType progressType){
         isLoading = false;
-        countingIdlingResource.decrement();
         hideProgress(progressType);
-        getViewState().showPaginationProgress();
+
+        if (!isDbData)
+            getViewState().showPaginationProgress();
     }
 
     public void onLoadingFailed(Throwable throwable){
-        countingIdlingResource.decrement();
         getViewState().showError(throwable.getMessage());
     }
 
@@ -165,7 +163,11 @@ public class BasePresenter extends MvpPresenter<BaseView> {
             realm.deleteAll();
             realm.commitTransaction();
         }
+
         Log.d("PAGE", String.valueOf(page));
+
+        isDbData = false;
+
         return mShotApi.getShots(new ShotsRequestModel(page).toMap())
                 .flatMap(shots -> Observable.fromIterable(Helper.shotFilter(shots)))
                 .doOnNext(shot -> {
@@ -180,6 +182,8 @@ public class BasePresenter extends MvpPresenter<BaseView> {
     }
 
     public Observable<BaseViewModel> onCreateRestoreDataObservable() {
+        isDbData = true;
+
         return Observable.fromCallable(getListFromRealmCallable())
                 .flatMap(shots -> Observable.fromIterable(Helper.restoreDataFilter(shots)))
                 .flatMap(shot -> {
@@ -199,10 +203,6 @@ public class BasePresenter extends MvpPresenter<BaseView> {
                     .findAllSorted(sortFields, sortOrder);
             return realm.copyFromRealm(realmResults);
         };
-    }
-
-    public void setIdlingResource(CountingIdlingResource countingIdlingResource) {
-        this.countingIdlingResource = countingIdlingResource;
     }
 
 }
